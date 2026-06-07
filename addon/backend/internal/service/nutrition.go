@@ -137,6 +137,8 @@ func (s *NutritionService) AnalyzeFood(ctx context.Context, userID, fileID, capt
 		return AnalyzeFoodResult{}, fmt.Errorf("download photo: %w", err)
 	}
 
+	s.log.Info("photo downloaded", "size_bytes", len(imageBytes))
+
 	rawJSON, err := s.analyzeImage(ctx, imageBytes, caption)
 	if err != nil {
 		return AnalyzeFoodResult{}, fmt.Errorf("analyze food: %w", err)

@@ -90,7 +90,7 @@ func (h *Handler) isAllowed(userID string) bool {
 }
 
 func (h *Handler) processPhoto(ctx context.Context, userID string, chatID int, fileID, caption string) {
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
 	h.log.Info("processing photo", "user", userID, "chat", chatID, "file_id", fileID)
