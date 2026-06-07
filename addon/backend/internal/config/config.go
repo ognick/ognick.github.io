@@ -44,7 +44,7 @@ func Load() *Config {
 		YouTubeAPIKey:         getEnv("YOUTUBE_API_KEY", ""),
 		TelegramBotToken:      getEnv("TELEGRAM_BOT_TOKEN", ""),
 		TelegramLLMAPIKey:     getEnv("TELEGRAM_LLM_API_KEY", ""),
-		TelegramLLMModel:      getEnv("TELEGRAM_LLM_MODEL", "gpt-4o"),
+		TelegramLLMModel:      getEnv("TELEGRAM_LLM_MODEL", "kimi-k2.6"),
 		TelegramLLMBaseURL:    getEnv("TELEGRAM_LLM_BASE_URL", ""),
 		TelegramAPIToken:      getEnv("TELEGRAM_API_TOKEN", ""),
 		TelegramAllowedUsers:  parseList(getEnv("TELEGRAM_ALLOWED_USER_IDS", "")),
