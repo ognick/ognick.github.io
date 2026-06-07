@@ -24,11 +24,11 @@ import (
 	memoryrepo "github.com/ognick/zabkiss/internal/repository/memory"
 	sqliterepo "github.com/ognick/zabkiss/internal/repository/sqlite"
 	"github.com/ognick/zabkiss/internal/service"
-	"github.com/ognick/zabkiss/pkg/gemini"
 	"github.com/ognick/zabkiss/pkg/httpserver"
 	"github.com/ognick/zabkiss/pkg/logger"
 	"github.com/ognick/zabkiss/pkg/sqlitedb"
 	tgclient "github.com/ognick/zabkiss/pkg/telegram"
+	"github.com/ognick/zabkiss/pkg/visionllm"
 	"github.com/ognick/zabkiss/pkg/youtube"
 )
 
@@ -104,9 +104,9 @@ func main() {
 			if baseURL == "" {
 				baseURL = cfg.LLMBaseURL
 			}
-			geminiClient := gemini.NewClient(baseURL, apiKey, cfg.TelegramLLMModel)
+			visionClient := visionllm.NewClient(baseURL, apiKey, cfg.TelegramLLMModel)
 			tgClient := tgclient.NewClient(cfg.TelegramBotToken)
-			nutritionSvc := service.NewNutritionService(geminiClient, tgClient, nutritionRepo, log)
+			nutritionSvc := service.NewNutritionService(visionClient, tgClient, nutritionRepo, log)
 
 			tgHandler = tghandler.NewHandler(nutritionSvc, tgClient, cfg.TelegramAllowedUsers, log)
 

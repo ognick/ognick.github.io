@@ -68,15 +68,17 @@ The frontend panel is `zabkiss-panel-v2.js` served from `custom_components/zabki
 
 ## Repository pattern
 
+- `pkg/` — domain-independent wrappers/libraries only. No business logic, no prompts, no domain types.
 - `internal/domain/` — `Device`, `CommandResult`, `Action`, `ChatMessage`, `MemoryFact`, `User`, `FoodLog`, `DailyStats`, `FoodAnalysis`
 - `internal/service/` — `SmartHomeService` orchestrates HA+LLM+memory; `NutritionService` handles food photo analysis via Telegram+Gemini. Both use gate interfaces for DI.
 - `internal/repository/repository.go` — `UserRepo`, `MemoryRepo` interfaces
 - `internal/repository/memory/` — in-memory user token cache
 - `internal/repository/sqlite/` — SQLite-backed memory facts + `nutrition_repo.go` (separate `/data/nutrition.db`)
 - `internal/http/telegram/` — Telegram webhook handler (`POST /telegram/webhook`)
-- `pkg/gemini/` — Gemini Vision API client for food analysis
+- `pkg/visionllm/` — generic OpenAI-compatible vision LLM client (no domain logic, no prompts)
 - `pkg/telegram/` — Telegram Bot API client (downloadFile, sendMessage)
 - `pkg/sqlitedb/` — SQLite connection helper (no ORM, uses `modernc.org/sqlite`)
+- All domain knowledge (prompts, parsing, business logic) lives in `internal/`
 - Lifecycle via `ognick/goscade`: components register with `goscade.Register(lc, ...)` for ordered startup/shutdown
 
 ## Testing conventions
