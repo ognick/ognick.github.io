@@ -142,6 +142,8 @@ func (s *NutritionService) AnalyzeFood(ctx context.Context, userID, fileID, capt
 		return AnalyzeFoodResult{}, fmt.Errorf("analyze food: %w", err)
 	}
 
+	s.log.Debug("llm raw response", "raw", rawJSON)
+
 	analysis, err := parseFoodResponse(rawJSON)
 	if err != nil {
 		return AnalyzeFoodResult{}, fmt.Errorf("parse response: %w", err)
@@ -210,7 +212,7 @@ func parseFoodResponse(rawJSON string) (domain.FoodAnalysis, error) {
 
 	var resp foodLLMResponse
 	if err := json.Unmarshal([]byte(rawJSON), &resp); err != nil {
-		return domain.FoodAnalysis{}, fmt.Errorf("parse food analysis: %w", err)
+		return domain.FoodAnalysis{}, fmt.Errorf("parse food analysis (first 100 chars: %q): %w", truncStr(rawJSON, 100), err)
 	}
 
 	return domain.FoodAnalysis{
@@ -239,6 +241,13 @@ func FormatMealReply(meal domain.FoodLog, stats domain.DailyStats, recommendatio
 	}
 
 	return reply
+}
+
+func truncStr(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }
 
 func base64Encode(data []byte) string {
