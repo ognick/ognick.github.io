@@ -91,12 +91,20 @@ func main() {
 
 	// ── Telegram ────────────────────────────────────────────────────────────
 	var tgHandler *tghandler.Handler
-	if cfg.TelegramBotToken != "" && cfg.TelegramLLMAPIKey != "" {
+	if cfg.TelegramBotToken != "" && (cfg.TelegramLLMAPIKey != "" || cfg.OpenAIAPIKey != "") {
 		nutritionRepo, err := sqliterepo.NewNutritionRepo()
 		if err != nil {
 			log.Error("nutrition repo", "err", err)
 		} else {
-			geminiClient := gemini.NewClient(cfg.TelegramLLMAPIKey, cfg.TelegramLLMModel)
+			apiKey := cfg.TelegramLLMAPIKey
+			if apiKey == "" {
+				apiKey = cfg.OpenAIAPIKey
+			}
+			baseURL := cfg.TelegramLLMBaseURL
+			if baseURL == "" {
+				baseURL = cfg.LLMBaseURL
+			}
+			geminiClient := gemini.NewClient(baseURL, apiKey, cfg.TelegramLLMModel)
 			tgClient := tgclient.NewClient(cfg.TelegramBotToken)
 			nutritionSvc := service.NewNutritionService(geminiClient, tgClient, nutritionRepo, log)
 

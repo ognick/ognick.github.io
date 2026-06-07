@@ -15,7 +15,8 @@ if [ -f "$OPTIONS" ]; then
     YOUTUBE_API_KEY=$(jq -r '.youtube_api_key // ""' "$OPTIONS")
     TELEGRAM_BOT_TOKEN=$(jq -r '.telegram_bot_token // ""' "$OPTIONS")
     TELEGRAM_LLM_API_KEY=$(jq -r '.telegram_llm_api_key // ""' "$OPTIONS")
-    TELEGRAM_LLM_MODEL=$(jq -r '.telegram_llm_model // "gemini-2.5-pro"' "$OPTIONS")
+    TELEGRAM_LLM_MODEL=$(jq -r '.telegram_llm_model // "gpt-4o"' "$OPTIONS")
+    TELEGRAM_LLM_BASE_URL=$(jq -r '.telegram_llm_base_url // ""' "$OPTIONS")
     TELEGRAM_API_TOKEN=$(jq -r '.telegram_api_token // ""' "$OPTIONS")
     TELEGRAM_ALLOWED_USER_IDS=$(jq -r '.telegram_allowed_user_ids // [] | join(",")' "$OPTIONS")
 else
@@ -30,7 +31,8 @@ else
     YOUTUBE_API_KEY="${YOUTUBE_API_KEY:-}"
     TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
     TELEGRAM_LLM_API_KEY="${TELEGRAM_LLM_API_KEY:-}"
-    TELEGRAM_LLM_MODEL="${TELEGRAM_LLM_MODEL:-gemini-2.5-pro}"
+    TELEGRAM_LLM_MODEL="${TELEGRAM_LLM_MODEL:-gpt-4o}"
+    TELEGRAM_LLM_BASE_URL="${TELEGRAM_LLM_BASE_URL:-}"
     TELEGRAM_API_TOKEN="${TELEGRAM_API_TOKEN:-}"
     TELEGRAM_ALLOWED_USER_IDS="${TELEGRAM_ALLOWED_USER_IDS:-}"
 fi
@@ -49,6 +51,7 @@ export YOUTUBE_API_KEY
 export TELEGRAM_BOT_TOKEN
 export TELEGRAM_LLM_API_KEY
 export TELEGRAM_LLM_MODEL
+export TELEGRAM_LLM_BASE_URL
 export TELEGRAM_API_TOKEN
 export TELEGRAM_ALLOWED_USER_IDS
 

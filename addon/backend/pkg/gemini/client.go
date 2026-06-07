@@ -11,47 +11,50 @@ import (
 	"github.com/ognick/zabkiss/internal/domain"
 )
 
-const geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta/models"
-
 type Client interface {
 	AnalyzeFood(ctx context.Context, imageBytes []byte, mimeType string, caption string) (domain.FoodAnalysis, error)
 }
 
-type geminiClient struct {
-	apiKey string
-	model  string
+type openAIClient struct {
+	baseURL string
+	apiKey  string
+	model   string
 }
 
-func NewClient(apiKey, model string) Client {
-	return &geminiClient{apiKey: apiKey, model: model}
+func NewClient(baseURL, apiKey, model string) Client {
+	return &openAIClient{baseURL: baseURL, apiKey: apiKey, model: model}
 }
 
-type geminiRequest struct {
-	Contents []geminiContent `json:"contents"`
+type chatRequest struct {
+	Model    string    `json:"model"`
+	Messages []message `json:"messages"`
 }
 
-type geminiContent struct {
-	Parts []geminiPart `json:"parts"`
+type message struct {
+	Role    string      `json:"role"`
+	Content interface{} `json:"content"`
 }
 
-type geminiPart struct {
-	Text       string       `json:"text,omitempty"`
-	InlineData *geminiImage `json:"inline_data,omitempty"`
+type textContent struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
 }
 
-type geminiImage struct {
-	MimeType string `json:"mime_type"`
-	Data     string `json:"data"`
+type imageContent struct {
+	Type     string    `json:"type"`
+	ImageURL *imageURL `json:"image_url"`
 }
 
-type geminiResponse struct {
-	Candidates []struct {
-		Content struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"content"`
-	} `json:"candidates"`
+type imageURL struct {
+	URL string `json:"url"`
+}
+
+type chatResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
 }
 
 type foodAnalysisResponse struct {
@@ -140,58 +143,57 @@ Rules:
 * If the image quality is insufficient, explain why.
 * recommendation: краткий диетологический совет по этому приёму пищи на русском языке, 1 предложение.`
 
-func (c *geminiClient) AnalyzeFood(ctx context.Context, imageBytes []byte, mimeType string, caption string) (domain.FoodAnalysis, error) {
+func (c *openAIClient) AnalyzeFood(ctx context.Context, imageBytes []byte, mimeType string, caption string) (domain.FoodAnalysis, error) {
 	userText := "Analyze this food image."
 	if caption != "" {
 		userText += " User description: " + caption
 	}
 
-	req := geminiRequest{
-		Contents: []geminiContent{
-			{
-				Parts: []geminiPart{
-					{Text: systemPrompt + "\n\n" + userText},
-					{InlineData: &geminiImage{
-						MimeType: mimeType,
-						Data:     base64Encode(imageBytes),
-					}},
-				},
-			},
+	base64Img := "data:" + mimeType + ";base64," + base64Encode(imageBytes)
+
+	req := chatRequest{
+		Model: c.model,
+		Messages: []message{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: []interface{}{
+				textContent{Type: "text", Text: userText},
+				imageContent{Type: "image_url", ImageURL: &imageURL{URL: base64Img}},
+			}},
 		},
 	}
 
 	data, err := json.Marshal(req)
 	if err != nil {
-		return domain.FoodAnalysis{}, fmt.Errorf("marshal gemini request: %w", err)
+		return domain.FoodAnalysis{}, fmt.Errorf("marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/%s:generateContent?key=%s", geminiBaseURL, c.model, c.apiKey)
+	url := strings.TrimRight(c.baseURL, "/") + "/chat/completions"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
 	if err != nil {
-		return domain.FoodAnalysis{}, fmt.Errorf("build gemini request: %w", err)
+		return domain.FoodAnalysis{}, fmt.Errorf("build request: %w", err)
 	}
+	httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
-		return domain.FoodAnalysis{}, fmt.Errorf("gemini api call: %w", err)
+		return domain.FoodAnalysis{}, fmt.Errorf("api call: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return domain.FoodAnalysis{}, fmt.Errorf("gemini returned %d", resp.StatusCode)
+		return domain.FoodAnalysis{}, fmt.Errorf("llm returned %d", resp.StatusCode)
 	}
 
-	var gemResp geminiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&gemResp); err != nil {
-		return domain.FoodAnalysis{}, fmt.Errorf("decode gemini response: %w", err)
+	var chatResp chatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return domain.FoodAnalysis{}, fmt.Errorf("decode response: %w", err)
+	}
+	if len(chatResp.Choices) == 0 {
+		return domain.FoodAnalysis{}, fmt.Errorf("empty response")
 	}
 
-	if len(gemResp.Candidates) == 0 || len(gemResp.Candidates[0].Content.Parts) == 0 {
-		return domain.FoodAnalysis{}, fmt.Errorf("empty gemini response")
-	}
-
-	rawJSON := gemResp.Candidates[0].Content.Parts[0].Text
+	rawJSON := chatResp.Choices[0].Message.Content
 	rawJSON = strings.TrimSpace(rawJSON)
 	rawJSON = strings.TrimPrefix(rawJSON, "```json")
 	rawJSON = strings.TrimPrefix(rawJSON, "```")
@@ -214,7 +216,6 @@ func (c *geminiClient) AnalyzeFood(ctx context.Context, imageBytes []byte, mimeT
 }
 
 func base64Encode(data []byte) string {
-	// Use standard encoding without line breaks.
 	const encodeStd = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 	var buf bytes.Buffer
 	buf.Grow(((len(data) + 2) / 3) * 4)
