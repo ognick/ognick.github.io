@@ -6,8 +6,8 @@ OPTIONS=/data/options.json
 if [ -f "$OPTIONS" ]; then
     LOG_LEVEL=$(jq -r '.log_level // "info"' "$OPTIONS")
     OPENCODE_API_KEY=$(jq -r '.opencode_api_key // ""' "$OPTIONS")
-    OPENCODE_BASE_URL=$(jq -r '.opencode_base_url // "https://api.opencode.ai/v1"' "$OPTIONS")
-    OPENCODE_MODEL=$(jq -r '.opencode_model // "gpt-4o-mini"' "$OPTIONS")
+    OPENCODE_BASE_URL=$(jq -r '.opencode_base_url // "https://opencode.ai/zen/go/v1"' "$OPTIONS")
+    OPENCODE_MODEL=$(jq -r '.opencode_model // "deepseek-v4-flash"' "$OPTIONS")
     ALLOWED_EMAILS=$(jq -r '.allowed_emails // [] | join(",")' "$OPTIONS")
     HA_TOKEN=$(jq -r '.ha_token // ""' "$OPTIONS")
     HA_URL=$(jq -r '.ha_url // "http://homeassistant:8123"' "$OPTIONS")
@@ -20,8 +20,8 @@ if [ -f "$OPTIONS" ]; then
 else
     LOG_LEVEL="${LOG_LEVEL:-info}"
     OPENCODE_API_KEY="${OPENCODE_API_KEY:-}"
-    OPENCODE_BASE_URL="${OPENCODE_BASE_URL:-https://api.opencode.ai/v1}"
-    OPENCODE_MODEL="${OPENCODE_MODEL:-gpt-4o-mini}"
+    OPENCODE_BASE_URL="${OPENCODE_BASE_URL:-https://opencode.ai/zen/go/v1}"
+    OPENCODE_MODEL="${OPENCODE_MODEL:-deepseek-v4-flash}"
     ALLOWED_EMAILS="${ALLOWED_EMAILS:-}"
     HA_TOKEN="${HA_TOKEN:-}"
     HA_URL="${HA_URL:-http://homeassistant:8123}"

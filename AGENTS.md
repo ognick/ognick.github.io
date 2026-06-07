@@ -46,8 +46,8 @@ No explicit `policy.Validate()` step — security boundary is the LLM system pro
 | Env var | Option key | Notes |
 |---------|-----------|-------|
 | `OPENCODE_API_KEY` | `opencode_api_key` | Required |
-| `OPENCODE_BASE_URL` | `opencode_base_url` | Default: `https://api.opencode.ai/v1` |
-| `OPENCODE_MODEL` | `opencode_model` | Default: `gpt-4o-mini`; dropdown for Alice smart home |
+| `OPENCODE_BASE_URL` | `opencode_base_url` | Default: `https://opencode.ai/zen/go/v1` |
+| `OPENCODE_MODEL` | `opencode_model` | Default: `deepseek-v4-flash`; dropdown for Alice smart home |
 | `HA_TOKEN` | `ha_token` | Required. Long-lived HA token |
 | `HA_URL` | `ha_url` | Default: `http://homeassistant:8123` |
 | `ALLOWED_EMAILS` | `allowed_emails` | Comma-separated; users outside this list get `errForbidden` |
