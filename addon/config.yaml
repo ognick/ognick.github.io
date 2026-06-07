@@ -41,4 +41,4 @@ schema:
   telegram_llm_api_key: str?
   telegram_llm_model: str?
   telegram_api_token: str?
-  telegram_allowed_user_ids: list(str?)
+  telegram_allowed_user_ids: [str]
