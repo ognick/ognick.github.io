@@ -24,7 +24,7 @@ var (
 
 // maxResponseTime — сколько времени до истечения Alice-таймаута мы резервируем
 // на отправку ответа с учётом сетевой задержки и JSON-кодирования.
-const maxResponseTime = 1000 * time.Millisecond
+const maxResponseTime = 300 * time.Millisecond
 
 type commandService interface {
 	Process(ctx context.Context, sessionID, userID, command string) (domain.CommandResult, error)
@@ -149,7 +149,7 @@ func (h *Handler) resolveAuth(ctx context.Context, req aliceRequest) (domain.Use
 func (h *Handler) write(w http.ResponseWriter, resp aliceResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		h.log.Error("encode response", "err", err)
+		h.log.Warn("alice response write failed (connection likely closed)", "err", err)
 	}
 }
 
