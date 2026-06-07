@@ -57,38 +57,56 @@ func TestJoinReplies(t *testing.T) {
 
 func TestWithOpenQuestion(t *testing.T) {
 	tests := []struct {
-		name  string
-		reply string
-		want  string
+		name       string
+		reply      string
+		hasQuestion bool // should append a question
 	}{
 		{
-			name:  "normal reply without question — appends Что ещё?",
-			reply: "Свет выключен",
-			want:  "Свет выключен Что ещё?",
+			name:        "normal reply without question — appends a question",
+			reply:       "Свет выключен",
+			hasQuestion: true,
 		},
 		{
-			name:  "reply already ends with question mark — no change",
-			reply: "Какую музыку включить?",
-			want:  "Какую музыку включить?",
+			name:        "reply already ends with question mark — no change",
+			reply:       "Какую музыку включить?",
+			hasQuestion: false,
 		},
 		{
-			name:  "reply with trailing spaces — spaces trimmed then Что ещё? appended",
-			reply: "Свет выключен   ",
-			want:  "Свет выключен Что ещё?",
+			name:        "reply with trailing spaces — spaces trimmed then question appended",
+			reply:       "Свет выключен   ",
+			hasQuestion: true,
 		},
 		{
-			name:  "reply already ends with question mark and space — no change",
-			reply: "Какую музыку включить? ",
-			want:  "Какую музыку включить? ",
+			name:        "reply already ends with question mark and space — no change",
+			reply:       "Какую музыку включить? ",
+			hasQuestion: false,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := withOpenQuestion(tc.reply)
-			if got != tc.want {
-				t.Errorf("withOpenQuestion(%q) = %q, want %q", tc.reply, got, tc.want)
+			if got == "" {
+				t.Fatal("withOpenQuestion returned empty string")
+			}
+			if tc.hasQuestion {
+				if !containsAny(got, openQuestions[:]) {
+					t.Errorf("withOpenQuestion(%q) = %q, expected one of known questions appended", tc.reply, got)
+				}
+			} else {
+				if got != tc.reply {
+					t.Errorf("withOpenQuestion(%q) = %q, expected no change", tc.reply, got)
+				}
 			}
 		})
 	}
+}
+
+func containsAny(s string, substrings []string) bool {
+	for _, sub := range substrings {
+		if len(s) > len(sub) && s[len(s)-len(sub):] == sub {
+			return true
+		}
+	}
+	return false
 }

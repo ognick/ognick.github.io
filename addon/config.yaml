@@ -22,6 +22,11 @@ options:
   ha_url: "http://homeassistant:8123"
   policy_cache_ttl_seconds: 10
   youtube_api_key: ""
+  telegram_bot_token: ""
+  telegram_llm_api_key: ""
+  telegram_llm_model: "gemini-2.5-pro"
+  telegram_api_token: ""
+  telegram_allowed_user_ids: []
 schema:
   log_level: list(debug|info|warn|error)
   openai_api_key: str
@@ -32,3 +37,8 @@ schema:
   ha_url: str
   policy_cache_ttl_seconds: int
   youtube_api_key: str?
+  telegram_bot_token: str?
+  telegram_llm_api_key: str?
+  telegram_llm_model: str?
+  telegram_api_token: str?
+  telegram_allowed_user_ids: list(str?)

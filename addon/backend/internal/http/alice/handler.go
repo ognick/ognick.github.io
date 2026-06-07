@@ -22,9 +22,9 @@ var (
 	errAuth      = errors.New("пожалуйста авторизуйтесь для продолжения")
 )
 
-// requestBudget — сколько времени до истечения Alice-таймаута мы резервируем
+// maxResponseTime — сколько времени до истечения Alice-таймаута мы резервируем
 // на отправку ответа с учётом сетевой задержки и JSON-кодирования.
-const requestBudget = 1000 * time.Millisecond
+const maxResponseTime = 1000 * time.Millisecond
 
 type commandService interface {
 	Process(ctx context.Context, sessionID, userID, command string) (domain.CommandResult, error)
@@ -74,7 +74,22 @@ func (h *Handler) webhook(w http.ResponseWriter, r *http.Request) {
 
 	h.log.Info("webhook request", "session", req.Session.SessionID, "utterance", req.Request.OriginalUtterance)
 
-	user, err := h.resolveAuth(r.Context(), req)
+	// Применяем бюджет таймаута Алисы: Request-Timeout в микросекундах.
+	// Deadline считается до auth, чтобы время на авторизацию входило в бюджет
+	// и мы гарантированно ответили Alice до истечения её таймаута.
+	ctx := r.Context()
+	if v := r.Header.Get("Request-Timeout"); v != "" {
+		if us, err := strconv.ParseInt(v, 10, 64); err == nil && us > 0 {
+			timeout := time.Duration(us) * time.Microsecond
+			if timeout > maxResponseTime {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithDeadline(ctx, time.Now().Add(timeout-maxResponseTime))
+				defer cancel()
+			}
+		}
+	}
+
+	user, err := h.resolveAuth(ctx, req)
 	if err != nil {
 		h.log.Warn("auth failed", "session", req.Session.SessionID, "err", err)
 		if errors.Is(err, errForbidden) {
@@ -96,19 +111,6 @@ func (h *Handler) webhook(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 		return
-	}
-
-	// Применяем бюджет таймаута Алисы: Request-Timeout в микросекундах.
-	ctx := r.Context()
-	if v := r.Header.Get("Request-Timeout"); v != "" {
-		if us, err := strconv.ParseInt(v, 10, 64); err == nil && us > 0 {
-			timeout := time.Duration(us) * time.Microsecond
-			if timeout > requestBudget {
-				var cancel context.CancelFunc
-				ctx, cancel = context.WithDeadline(ctx, time.Now().Add(timeout-requestBudget))
-				defer cancel()
-			}
-		}
 	}
 
 	h.log.Info("auth ok", "session", req.Session.SessionID, "user", user.Name, "email", user.Email)

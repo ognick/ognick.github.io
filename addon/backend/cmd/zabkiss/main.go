@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"os"
 	"strings"
@@ -15,14 +18,17 @@ import (
 	"github.com/ognick/zabkiss/internal/config"
 	"github.com/ognick/zabkiss/internal/ha"
 	"github.com/ognick/zabkiss/internal/http/alice"
+	tghandler "github.com/ognick/zabkiss/internal/http/telegram"
 	"github.com/ognick/zabkiss/internal/llm"
 	"github.com/ognick/zabkiss/internal/policy"
 	memoryrepo "github.com/ognick/zabkiss/internal/repository/memory"
 	sqliterepo "github.com/ognick/zabkiss/internal/repository/sqlite"
 	"github.com/ognick/zabkiss/internal/service"
+	"github.com/ognick/zabkiss/pkg/gemini"
 	"github.com/ognick/zabkiss/pkg/httpserver"
 	"github.com/ognick/zabkiss/pkg/logger"
 	"github.com/ognick/zabkiss/pkg/sqlitedb"
+	tgclient "github.com/ognick/zabkiss/pkg/telegram"
 	"github.com/ognick/zabkiss/pkg/youtube"
 )
 
@@ -82,6 +88,60 @@ func main() {
 	svc := service.New(haClient, llmClient, policyClient, memoryRepo, ytClient, log)
 
 	alice.New(svc, alice.NewAuth(userRepo, cfg.AllowedEmails), log).Register(r)
+
+	// ── Telegram ────────────────────────────────────────────────────────────
+	if cfg.TelegramBotToken != "" && cfg.TelegramLLMAPIKey != "" {
+		nutritionRepo, err := sqliterepo.NewNutritionRepo()
+		if err != nil {
+			log.Error("nutrition repo", "err", err)
+		} else {
+			geminiClient := gemini.NewClient(cfg.TelegramLLMAPIKey, cfg.TelegramLLMModel)
+			tgClient := tgclient.NewClient(cfg.TelegramBotToken)
+			nutritionSvc := service.NewNutritionService(geminiClient, tgClient, nutritionRepo, log)
+
+			tghandler.NewHandler(nutritionSvc, tgClient, cfg.TelegramAllowedUsers, log).Register(r)
+
+			apiToken := cfg.TelegramAPIToken
+			if apiToken == "" {
+				apiToken = generateToken()
+				log.Warn("TELEGRAM_API_TOKEN not set, generated", "token", apiToken)
+			}
+
+			r.Get("/api/zabkiss/nutrition/daily", func(w http.ResponseWriter, req *http.Request) {
+				auth := req.Header.Get("Authorization")
+				if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != apiToken {
+					http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+					return
+				}
+				userID := req.URL.Query().Get("user_id")
+				if userID == "" {
+					http.Error(w, `{"error":"user_id required"}`, http.StatusBadRequest)
+					return
+				}
+				dateStr := req.URL.Query().Get("date")
+				date := time.Now()
+				if dateStr != "" {
+					parsed, err := time.Parse("2006-01-02", dateStr)
+					if err != nil {
+						http.Error(w, `{"error":"invalid date format, use YYYY-MM-DD"}`, http.StatusBadRequest)
+						return
+					}
+					date = parsed
+				}
+				stats, err := nutritionSvc.GetDailyStats(req.Context(), userID, date)
+				if err != nil {
+					log.Error("get daily stats", "err", err)
+					http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				encodeJSON(w, stats)
+			})
+
+			log.Info("telegram nutrition bot enabled")
+		}
+	}
+
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "ok")
@@ -116,4 +176,19 @@ func localHost() string {
 		return name
 	}
 	return name + ".local"
+}
+
+func generateToken() string {
+	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, 32)
+	for i := range b {
+		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
+		b[i] = chars[n.Int64()]
+	}
+	return string(b)
+}
+
+func encodeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v) //nolint:errcheck
 }

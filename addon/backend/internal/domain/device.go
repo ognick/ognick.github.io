@@ -21,7 +21,7 @@ type DeviceParam struct {
 
 // DeviceService — сервис, применимый к устройству.
 type DeviceService struct {
-	Service string              // e.g. "light.turn_on"
+	Service string                 // e.g. "light.turn_on"
 	Params  map[string]DeviceParam // имя параметра → описание
 }
 
