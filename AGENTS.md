@@ -45,9 +45,9 @@ No explicit `policy.Validate()` step — security boundary is the LLM system pro
 
 | Env var | Option key | Notes |
 |---------|-----------|-------|
-| `OPENAI_API_KEY` | `openai_api_key` | Required |
-| `LLM_BASE_URL` | `llm_base_url` | Default: `https://api.openai.com/v1` |
-| `LLM_MODEL` | `llm_model` | Default: `gpt-4o-mini` |
+| `OPENCODE_API_KEY` | `opencode_api_key` | Required |
+| `OPENCODE_BASE_URL` | `opencode_base_url` | Default: `https://api.opencode.ai/v1` |
+| `OPENCODE_MODEL` | `opencode_model` | Default: `gpt-4o-mini`; dropdown for Alice smart home |
 | `HA_TOKEN` | `ha_token` | Required. Long-lived HA token |
 | `HA_URL` | `ha_url` | Default: `http://homeassistant:8123` |
 | `ALLOWED_EMAILS` | `allowed_emails` | Comma-separated; users outside this list get `errForbidden` |
@@ -56,8 +56,8 @@ No explicit `policy.Validate()` step — security boundary is the LLM system pro
 | `LOG_LEVEL` | `log_level` | `debug\|info\|warn\|error` |
 | `DB_PATH` | — | Default: `/data/zabkiss.db` (SQLite) |
 | `TELEGRAM_BOT_TOKEN` | `telegram_bot_token` | Optional; enables Telegram nutrition bot |
-| `TELEGRAM_LLM_API_KEY` | `telegram_llm_api_key` | Optional; Gemini API key for food analysis |
-| `TELEGRAM_LLM_MODEL` | `telegram_llm_model` | Default: `gemini-2.5-pro` |
+| `TELEGRAM_LLM_API_KEY` | `telegram_llm_api_key` | Optional; OpenCode API key for food analysis |
+| `TELEGRAM_LLM_MODEL` | `telegram_llm_model` | Default: `kimi-k2.6`; dropdown for food analysis |
 | `TELEGRAM_API_TOKEN` | `telegram_api_token` | Optional; Bearer token for nutrition stats API. Auto-generated UUID if empty when telegram enabled. |
 
 ## Integration (Python)
@@ -70,12 +70,12 @@ The frontend panel is `zabkiss-panel-v2.js` served from `custom_components/zabki
 
 - `pkg/` — domain-independent wrappers/libraries only. No business logic, no prompts, no domain types.
 - `internal/domain/` — `Device`, `CommandResult`, `Action`, `ChatMessage`, `MemoryFact`, `User`, `FoodLog`, `DailyStats`, `FoodAnalysis`
-- `internal/service/` — `SmartHomeService` orchestrates HA+LLM+memory; `NutritionService` handles food photo analysis via Telegram+Gemini. Both use gate interfaces for DI.
+- `internal/service/` — `SmartHomeService` orchestrates HA+LLM+memory; `NutritionService` handles food photo analysis via Telegram+LLM. Both use gate interfaces for DI.
 - `internal/repository/repository.go` — `UserRepo`, `MemoryRepo` interfaces
 - `internal/repository/memory/` — in-memory user token cache
 - `internal/repository/sqlite/` — SQLite-backed memory facts + `nutrition_repo.go` (separate `/data/nutrition.db`)
 - `internal/http/telegram/` — Telegram webhook handler (`POST /telegram/webhook`)
-- `pkg/visionllm/` — generic OpenAI-compatible vision LLM client (no domain logic, no prompts)
+- `pkg/visionllm/` — generic vision LLM client (no domain logic, no prompts)
 - `pkg/telegram/` — Telegram Bot API client (downloadFile, sendMessage)
 - `pkg/sqlitedb/` — SQLite connection helper (no ORM, uses `modernc.org/sqlite`)
 - All domain knowledge (prompts, parsing, business logic) lives in `internal/`

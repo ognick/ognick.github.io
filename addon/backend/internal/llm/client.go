@@ -17,7 +17,7 @@ type Client interface {
 	Execute(ctx context.Context, command string, devices []domain.Device, history []domain.ChatMessage, memoryFacts []domain.MemoryFact) (domain.CommandResult, error)
 }
 
-type openAIClient struct {
+type llmClient struct {
 	baseURL string
 	apiKey  string
 	model   string
@@ -25,7 +25,7 @@ type openAIClient struct {
 }
 
 func NewClient(baseURL, apiKey, model string, log logger.Logger) Client {
-	return &openAIClient{baseURL: baseURL, apiKey: apiKey, model: model, log: log}
+	return &llmClient{baseURL: baseURL, apiKey: apiKey, model: model, log: log}
 }
 
 type chatRequest struct {
@@ -66,7 +66,7 @@ type llmAction struct {
 	Data     map[string]any `json:"data"`
 }
 
-func (c *openAIClient) Execute(ctx context.Context, command string, devices []domain.Device, history []domain.ChatMessage, memoryFacts []domain.MemoryFact) (domain.CommandResult, error) {
+func (c *llmClient) Execute(ctx context.Context, command string, devices []domain.Device, history []domain.ChatMessage, memoryFacts []domain.MemoryFact) (domain.CommandResult, error) {
 	systemPrompt := BuildSystemPrompt(devices, memoryFacts)
 
 	messages := make([]message, 0, len(history)+2)

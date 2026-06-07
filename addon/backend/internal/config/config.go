@@ -12,9 +12,9 @@ type Config struct {
 	Addr                  string
 	DBPath                string
 	LogLevel              string
-	OpenAIAPIKey          string
-	LLMBaseURL            string
-	LLMModel              string
+	OpenCodeAPIKey        string
+	OpenCodeBaseURL       string
+	OpenCodeModel         string
 	AllowedEmails         []string
 	HAToken               string
 	HAURL                 string
@@ -34,9 +34,9 @@ func Load() *Config {
 		Addr:                  getEnv("ADDR", ":8080"),
 		DBPath:                getEnv("DB_PATH", "/data/zabkiss.db"),
 		LogLevel:              getEnv("LOG_LEVEL", "debug"),
-		OpenAIAPIKey:          getEnv("OPENAI_API_KEY", ""),
-		LLMBaseURL:            getEnv("LLM_BASE_URL", "https://api.openai.com/v1"),
-		LLMModel:              getEnv("LLM_MODEL", "gpt-4o-mini"),
+		OpenCodeAPIKey:        getEnv("OPENCODE_API_KEY", ""),
+		OpenCodeBaseURL:       getEnv("OPENCODE_BASE_URL", "https://api.opencode.ai/v1"),
+		OpenCodeModel:         getEnv("OPENCODE_MODEL", "gpt-4o-mini"),
 		AllowedEmails:         parseList(getEnv("ALLOWED_EMAILS", "")),
 		HAToken:               getEnv("HA_TOKEN", ""),
 		HAURL:                 getEnv("HA_URL", "http://homeassistant:8123"),

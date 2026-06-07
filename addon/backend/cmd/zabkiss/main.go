@@ -77,7 +77,7 @@ func main() {
 		log,
 	)
 	haClient := ha.NewClient(cfg.HAURL, cfg.HAToken)
-	llmClient := llm.NewClient(cfg.LLMBaseURL, cfg.OpenAIAPIKey, cfg.LLMModel, log)
+	llmClient := llm.NewClient(cfg.OpenCodeBaseURL, cfg.OpenCodeAPIKey, cfg.OpenCodeModel, log)
 
 	var ytClient service.YouTubeGateway
 	if cfg.YouTubeAPIKey != "" {
@@ -91,18 +91,18 @@ func main() {
 
 	// ── Telegram ────────────────────────────────────────────────────────────
 	var tgHandler *tghandler.Handler
-	if cfg.TelegramBotToken != "" && (cfg.TelegramLLMAPIKey != "" || cfg.OpenAIAPIKey != "") {
+	if cfg.TelegramBotToken != "" && (cfg.TelegramLLMAPIKey != "" || cfg.OpenCodeAPIKey != "") {
 		nutritionRepo, err := sqliterepo.NewNutritionRepo()
 		if err != nil {
 			log.Error("nutrition repo", "err", err)
 		} else {
 			apiKey := cfg.TelegramLLMAPIKey
 			if apiKey == "" {
-				apiKey = cfg.OpenAIAPIKey
+				apiKey = cfg.OpenCodeAPIKey
 			}
 			baseURL := cfg.TelegramLLMBaseURL
 			if baseURL == "" {
-				baseURL = cfg.LLMBaseURL
+				baseURL = cfg.OpenCodeBaseURL
 			}
 			visionClient := visionllm.NewClient(baseURL, apiKey, cfg.TelegramLLMModel)
 			tgClient := tgclient.NewClient(cfg.TelegramBotToken)
