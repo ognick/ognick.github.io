@@ -1,6 +1,6 @@
 name: "ZabKiss"
 description: "Natural language smart home control via Alice voice assistant"
-version: "0.4.1"
+version: "0.4.2"
 slug: "zabkiss"
 init: false
 arch:
@@ -27,7 +27,7 @@ options:
   telegram_api_token: ""
   telegram_llm_model: "kimi-k2.6"
   telegram_llm_api_key: ""
-  telegram_llm_base_url: "https://opencode.ai/zen/go/v1"
+  telegram_llm_base_url: "https://api.opencode.ai/v1"
 schema:
   log_level: list(debug|info|warn|error)
   ha_token: str
