@@ -91,20 +91,12 @@ func main() {
 
 	// ── Telegram ────────────────────────────────────────────────────────────
 	var tgHandler *tghandler.Handler
-	if cfg.TelegramBotToken != "" && (cfg.TelegramLLMAPIKey != "" || cfg.OpenCodeAPIKey != "") {
+	if cfg.TelegramBotToken != "" && cfg.OpenCodeAPIKey != "" {
 		nutritionRepo, err := sqliterepo.NewNutritionRepo()
 		if err != nil {
 			log.Error("nutrition repo", "err", err)
 		} else {
-			apiKey := cfg.TelegramLLMAPIKey
-			if apiKey == "" {
-				apiKey = cfg.OpenCodeAPIKey
-			}
-			baseURL := cfg.TelegramLLMBaseURL
-			if baseURL == "" {
-				baseURL = cfg.OpenCodeBaseURL
-			}
-			visionClient := visionllm.NewClient(baseURL, apiKey, cfg.TelegramLLMModel)
+			visionClient := visionllm.NewClient(cfg.OpenCodeBaseURL, cfg.OpenCodeAPIKey, cfg.TelegramLLMModel)
 			tgClient := tgclient.NewClient(cfg.TelegramBotToken)
 			nutritionSvc := service.NewNutritionService(visionClient, tgClient, nutritionRepo, log)
 

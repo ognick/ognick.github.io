@@ -21,9 +21,7 @@ type Config struct {
 	PolicyCacheTTLSeconds int
 	YouTubeAPIKey         string
 	TelegramBotToken      string
-	TelegramLLMAPIKey     string
 	TelegramLLMModel      string
-	TelegramLLMBaseURL    string
 	TelegramAPIToken      string
 	TelegramAllowedUsers  []string
 }
@@ -43,9 +41,7 @@ func Load() *Config {
 		PolicyCacheTTLSeconds: parseInt(getEnv("POLICY_CACHE_TTL_SECONDS", "10")),
 		YouTubeAPIKey:         getEnv("YOUTUBE_API_KEY", ""),
 		TelegramBotToken:      getEnv("TELEGRAM_BOT_TOKEN", ""),
-		TelegramLLMAPIKey:     getEnv("TELEGRAM_LLM_API_KEY", ""),
 		TelegramLLMModel:      getEnv("TELEGRAM_LLM_MODEL", "kimi-k2.6"),
-		TelegramLLMBaseURL:    getEnv("TELEGRAM_LLM_BASE_URL", "https://api.opencode.ai/v1"),
 		TelegramAPIToken:      getEnv("TELEGRAM_API_TOKEN", ""),
 		TelegramAllowedUsers:  parseList(getEnv("TELEGRAM_ALLOWED_USER_IDS", "")),
 	}

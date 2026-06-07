@@ -56,7 +56,6 @@ No explicit `policy.Validate()` step — security boundary is the LLM system pro
 | `LOG_LEVEL` | `log_level` | `debug\|info\|warn\|error` |
 | `DB_PATH` | — | Default: `/data/zabkiss.db` (SQLite) |
 | `TELEGRAM_BOT_TOKEN` | `telegram_bot_token` | Optional; enables Telegram nutrition bot |
-| `TELEGRAM_LLM_API_KEY` | `telegram_llm_api_key` | Optional; OpenCode API key for food analysis |
 | `TELEGRAM_LLM_MODEL` | `telegram_llm_model` | Default: `kimi-k2.6`; dropdown for food analysis |
 | `TELEGRAM_API_TOKEN` | `telegram_api_token` | Optional; Bearer token for nutrition stats API. Auto-generated UUID if empty when telegram enabled. |
 
