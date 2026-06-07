@@ -53,10 +53,17 @@ func (m *mockUserRepo) Upsert(_ context.Context, user domain.User) error {
 }
 
 type mockService struct {
-	result domain.CommandResult
-	err    error
+	result  domain.CommandResult
+	err     error
+	blockCh chan struct{} // если задан, Process блокируется до закрытия канала
 }
 
 func (m *mockService) Process(_ context.Context, _, _, _ string) (domain.CommandResult, error) {
+	if m.blockCh != nil {
+		<-m.blockCh
+	}
 	return m.result, m.err
 }
+
+func (m *mockService) PopInbox(_ string) string           { return "" }
+func (m *mockService) StoreInbox(_, _ string)             {}

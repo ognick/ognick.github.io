@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ognick/zabkiss/internal/domain"
+	"github.com/ognick/zabkiss/internal/service"
 	"github.com/ognick/zabkiss/pkg/logger"
 )
 
@@ -22,12 +23,14 @@ var (
 	errAuth      = errors.New("пожалуйста авторизуйтесь для продолжения")
 )
 
-// maxResponseTime — сколько времени до истечения Alice-таймаута мы резервируем
-// на отправку ответа с учётом сетевой задержки и JSON-кодирования.
+// maxResponseTime — резерв времени на отправку ответа Алисе
+// (JSON-кодирование + сетевая задержка).
 const maxResponseTime = 300 * time.Millisecond
 
 type commandService interface {
 	Process(ctx context.Context, sessionID, userID, command string) (domain.CommandResult, error)
+	PopInbox(sessionID string) string
+	StoreInbox(sessionID, reply string)
 }
 
 type userResolver interface {
@@ -74,22 +77,8 @@ func (h *Handler) webhook(w http.ResponseWriter, r *http.Request) {
 
 	h.log.Info("webhook request", "session", req.Session.SessionID, "utterance", req.Request.OriginalUtterance)
 
-	// Применяем бюджет таймаута Алисы: Request-Timeout в микросекундах.
-	// Deadline считается до auth, чтобы время на авторизацию входило в бюджет
-	// и мы гарантированно ответили Alice до истечения её таймаута.
-	ctx := r.Context()
-	if v := r.Header.Get("Request-Timeout"); v != "" {
-		if us, err := strconv.ParseInt(v, 10, 64); err == nil && us > 0 {
-			timeout := time.Duration(us) * time.Microsecond
-			if timeout > maxResponseTime {
-				var cancel context.CancelFunc
-				ctx, cancel = context.WithDeadline(ctx, time.Now().Add(timeout-maxResponseTime))
-				defer cancel()
-			}
-		}
-	}
-
-	user, err := h.resolveAuth(ctx, req)
+	// Auth не зависит от Alice-таймаута — используем контекст HTTP-запроса.
+	user, err := h.resolveAuth(r.Context(), req)
 	if err != nil {
 		h.log.Warn("auth failed", "session", req.Session.SessionID, "err", err)
 		if errors.Is(err, errForbidden) {
@@ -115,26 +104,86 @@ func (h *Handler) webhook(w http.ResponseWriter, r *http.Request) {
 
 	h.log.Info("auth ok", "session", req.Session.SessionID, "user", user.Name, "email", user.Email)
 
-	result, err := h.svc.Process(ctx, req.Session.SessionID, user.ID, req.Request.Command)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			const msg = "не успел обработать запрос, попробуйте ещё раз"
-			h.write(w, aliceResponse{
-				Version:  version,
-				Response: responseBody{Text: msg, TTS: msg, EndSession: true},
-			})
-			return
+	aliceTimeout := h.getAliceTimeout(r)
+
+	resultCh := make(chan domain.CommandResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), service.ProcessTimeout)
+		defer cancel()
+		result, err := h.svc.Process(ctx, req.Session.SessionID, user.ID, req.Request.Command)
+		if err != nil {
+			errCh <- err
+		} else {
+			resultCh <- result
 		}
-		h.log.Error("process command", "err", err)
-		h.writeError(w, fmt.Errorf("%s, произошла ошибка при обработке команды", user.Name))
-		return
+	}()
+
+	var timeoutCh <-chan time.Time
+	if aliceTimeout > 0 {
+		timeoutCh = time.After(aliceTimeout)
 	}
 
-	text := result.Reply
-	h.write(w, aliceResponse{
-		Version:  version,
-		Response: responseBody{Text: text, TTS: text, EndSession: result.EndSession},
-	})
+	select {
+	case result := <-resultCh:
+		pending := h.svc.PopInbox(req.Session.SessionID)
+		reply := result.Reply
+		if pending != "" {
+			reply = service.JoinReplies(pending, reply)
+		}
+		if !result.EndSession {
+			reply = service.WithOpenQuestion(reply)
+		}
+		h.write(w, aliceResponse{
+			Version:  version,
+			Response: responseBody{Text: reply, TTS: reply, EndSession: result.EndSession},
+		})
+
+	case err := <-errCh:
+		h.log.Error("process command", "err", err)
+		h.writeError(w, fmt.Errorf("%s, произошла ошибка при обработке команды", user.Name))
+
+	case <-timeoutCh:
+		h.log.Warn("alice deadline exceeded, deferring result", "session", req.Session.SessionID)
+		go func() {
+			select {
+			case result := <-resultCh:
+				h.log.Info("deferred result ready, storing in inbox", "session", req.Session.SessionID)
+				h.svc.StoreInbox(req.Session.SessionID, result.Reply)
+			case err := <-errCh:
+				h.log.Error("deferred processing failed", "session", req.Session.SessionID, "err", err)
+			case <-time.After(service.ProcessTimeout):
+				h.log.Warn("deferred processing timed out", "session", req.Session.SessionID)
+			}
+		}()
+		pending := h.svc.PopInbox(req.Session.SessionID)
+		msg := "Обрабатываю запрос, спроси чуть позже"
+		if pending != "" {
+			msg = service.JoinReplies(pending, msg)
+		}
+		h.write(w, aliceResponse{
+			Version:  version,
+			Response: responseBody{Text: msg, TTS: msg},
+		})
+	}
+}
+
+// getAliceTimeout парсит Request-Timeout (микросекунды) и возвращает duration
+// с резервом maxResponseTime на отправку ответа.
+func (h *Handler) getAliceTimeout(r *http.Request) time.Duration {
+	v := r.Header.Get("Request-Timeout")
+	if v == "" {
+		return 0
+	}
+	us, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || us <= 0 {
+		return 0
+	}
+	timeout := time.Duration(us) * time.Microsecond
+	if timeout <= maxResponseTime {
+		return 0
+	}
+	return timeout - maxResponseTime
 }
 
 func (h *Handler) resolveAuth(ctx context.Context, req aliceRequest) (domain.User, error) {

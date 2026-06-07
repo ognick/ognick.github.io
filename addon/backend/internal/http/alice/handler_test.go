@@ -192,10 +192,14 @@ func TestWebhook_ServiceError(t *testing.T) {
 func TestWebhook_Timeout_ReturnsRetryMessage(t *testing.T) {
 	log := &mockLogger{}
 	user := &domain.User{ID: "u1", Name: "Иван", Email: "ivan@home.ru", Token: "tok"}
-	h := &Handler{log: log, svc: &mockService{err: context.DeadlineExceeded}, auth: &mockAuth{user: user}}
+
+	blockCh := make(chan struct{})
+	svc := &mockService{blockCh: blockCh}
+	h := &Handler{log: log, svc: svc, auth: &mockAuth{user: user}}
 
 	body := `{"session":{"session_id":"s1","message_id":1,"user":{"user_id":"u1","access_token":"tok"}},"request":{"command":"включи свет"}}`
 	r := httptest.NewRequest(http.MethodPost, "/alice/webhook", strings.NewReader(body))
+	r.Header.Set("Request-Timeout", "500000") // 500ms → после вычета 300ms буфера остаётся 200ms
 	w := httptest.NewRecorder()
 
 	h.webhook(w, r)
@@ -204,12 +208,11 @@ func TestWebhook_Timeout_ReturnsRetryMessage(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
-	if !resp.Response.EndSession {
-		t.Error("EndSession should be true on timeout")
+	if !strings.Contains(resp.Response.Text, "спроси чуть позже") {
+		t.Errorf("timeout message should suggest retry later, got: %q", resp.Response.Text)
 	}
-	if !strings.Contains(resp.Response.Text, "попробуйте ещё раз") {
-		t.Errorf("timeout message should suggest retry, got: %q", resp.Response.Text)
-	}
+
+	close(blockCh) // разблокируем горутину, чтобы не утекала
 }
 
 func TestResolveAuth_NoToken_ReturnsErrAuth(t *testing.T) {

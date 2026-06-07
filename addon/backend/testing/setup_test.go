@@ -98,12 +98,18 @@ func (s *serviceStub) Process(_ context.Context, _, _, _ string) (domain.Command
 	return domain.CommandResult{Status: domain.CommandOK, Reply: s.reply, EndSession: true}, nil
 }
 
+func (s *serviceStub) PopInbox(_ string) string  { return "" }
+func (s *serviceStub) StoreInbox(_, _ string)    {}
+
 // panicServiceStub simulates a catastrophic failure in the service layer.
 type panicServiceStub struct{}
 
 func (s *panicServiceStub) Process(_ context.Context, _, _, _ string) (domain.CommandResult, error) {
 	panic("simulated service panic")
 }
+
+func (s *panicServiceStub) PopInbox(_ string) string  { return "" }
+func (s *panicServiceStub) StoreInbox(_, _ string)    {}
 
 // policyStub returns a fixed list of entities (empty by default).
 type policyStub struct {

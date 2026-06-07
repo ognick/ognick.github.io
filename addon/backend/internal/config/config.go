@@ -22,7 +22,6 @@ type Config struct {
 	YouTubeAPIKey         string
 	TelegramBotToken      string
 	TelegramLLMModel      string
-	TelegramAPIToken      string
 	TelegramAllowedUsers  []string
 }
 
@@ -42,7 +41,6 @@ func Load() *Config {
 		YouTubeAPIKey:         getEnv("YOUTUBE_API_KEY", ""),
 		TelegramBotToken:      getEnv("TELEGRAM_BOT_TOKEN", ""),
 		TelegramLLMModel:      getEnv("TELEGRAM_LLM_MODEL", "kimi-k2.6"),
-		TelegramAPIToken:      getEnv("TELEGRAM_API_TOKEN", ""),
 		TelegramAllowedUsers:  parseList(getEnv("TELEGRAM_ALLOWED_USER_IDS", "")),
 	}
 }

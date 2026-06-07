@@ -29,8 +29,12 @@ options:
   # ── Telegram / Food Analysis ──
   telegram_bot_token: ""
   telegram_allowed_user_ids: []
-  telegram_api_token: ""
   telegram_llm_model: "kimi-k2.6"
+ingress: true
+ingress_port: 8080
+panel_icon: mdi:clipboard-text
+panel_title: ZabKiss Nutrition
+panel_admin: false
 schema:
   log_level: list(debug|info|warn|error)
   ha_token: str
@@ -43,5 +47,4 @@ schema:
   youtube_api_key: str?
   telegram_bot_token: str?
   telegram_allowed_user_ids: [str]
-  telegram_api_token: str?
   telegram_llm_model: list(kimi-k2.6|kimi-k2.5|glm-5.1|glm-5|deepseek-v4-pro|deepseek-v4-flash|mimo-v2.5-pro|mimo-v2.5)

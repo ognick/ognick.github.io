@@ -2,11 +2,8 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math/big"
 	"net/http"
 	"os"
 	"strings"
@@ -18,6 +15,7 @@ import (
 	"github.com/ognick/zabkiss/internal/config"
 	"github.com/ognick/zabkiss/internal/ha"
 	"github.com/ognick/zabkiss/internal/http/alice"
+	nutritionhttp "github.com/ognick/zabkiss/internal/http/nutrition"
 	tghandler "github.com/ognick/zabkiss/internal/http/telegram"
 	"github.com/ognick/zabkiss/internal/llm"
 	"github.com/ognick/zabkiss/internal/policy"
@@ -102,42 +100,30 @@ func main() {
 
 			tgHandler = tghandler.NewHandler(nutritionSvc, tgClient, cfg.TelegramAllowedUsers, log)
 
-			apiToken := cfg.TelegramAPIToken
-			if apiToken == "" {
-				apiToken = generateToken()
-				log.Warn("TELEGRAM_API_TOKEN not set, generated", "token", apiToken)
-			}
+			nutritionHandler := nutritionhttp.NewIngressHandler(nutritionRepo, visionClient, log)
 
-			r.Get("/api/zabkiss/nutrition/daily", func(w http.ResponseWriter, req *http.Request) {
-				auth := req.Header.Get("Authorization")
-				if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != apiToken {
-					http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-					return
-				}
-				userID := req.URL.Query().Get("user_id")
-				if userID == "" {
-					http.Error(w, `{"error":"user_id required"}`, http.StatusBadRequest)
-					return
-				}
-				dateStr := req.URL.Query().Get("date")
-				date := time.Now()
-				if dateStr != "" {
-					parsed, err := time.Parse("2006-01-02", dateStr)
-					if err != nil {
-						http.Error(w, `{"error":"invalid date format, use YYYY-MM-DD"}`, http.StatusBadRequest)
-						return
-					}
-					date = parsed
-				}
-				stats, err := nutritionSvc.GetDailyStats(req.Context(), userID, date)
-				if err != nil {
-					log.Error("get daily stats", "err", err)
-					http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
-					return
-				}
-				w.Header().Set("Content-Type", "application/json")
-				encodeJSON(w, stats)
+			r.Route("/nutrition", func(r chi.Router) {
+				r.Use(ingressAuth)
+				r.Use(securityHeaders)
+
+				r.Get("/ui", func(w http.ResponseWriter, req *http.Request) {
+					w.Header().Set("Content-Type", "text/html; charset=utf-8")
+					data, _ := nutritionhttp.UIHTML.ReadFile("ui.html")
+					w.Write(data)
+				})
+				r.Route("/api", func(r chi.Router) {
+					r.Get("/users", nutritionHandler.ListUsers)
+					r.Get("/entries", nutritionHandler.GetEntries)
+					r.Put("/entries/{id}", nutritionHandler.UpdateEntry)
+					r.Delete("/entries/{id}", nutritionHandler.DeleteEntry)
+					r.Get("/targets", nutritionHandler.GetTargets)
+					r.Put("/targets", nutritionHandler.SaveTargets)
+					r.Post("/targets/{user_id}/regenerate-token", nutritionHandler.RegenerateToken)
+				})
 			})
+
+			r.With(nutritionHandler.DailyRateLimit).Get("/api/zabkiss/nutrition/daily", nutritionHandler.ExternalDaily)
+			r.With(nutritionHandler.WeeklyRateLimit).Get("/api/zabkiss/nutrition/weekly", nutritionHandler.ExternalWeekly)
 
 			log.Info("telegram nutrition bot enabled")
 		}
@@ -182,17 +168,26 @@ func localHost() string {
 	return name + ".local"
 }
 
-func generateToken() string {
-	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, 32)
-	for i := range b {
-		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
-		b[i] = chars[n.Int64()]
-	}
-	return string(b)
+func ingressAuth(next http.Handler) http.Handler {
+	supervisorToken := os.Getenv("SUPERVISOR_TOKEN")
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if supervisorToken == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if r.Header.Get("X-HA-Access") != supervisorToken {
+			http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
-func encodeJSON(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(v) //nolint:errcheck
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline' 'self'")
+		next.ServeHTTP(w, r)
+	})
 }

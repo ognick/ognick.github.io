@@ -45,9 +45,9 @@ func TestJoinReplies(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := joinReplies(tc.a, tc.b)
+			got := JoinReplies(tc.a, tc.b)
 			if got != tc.want {
-				t.Errorf("joinReplies(%q, %q) = %q, want %q", tc.a, tc.b, got, tc.want)
+				t.Errorf("JoinReplies(%q, %q) = %q, want %q", tc.a, tc.b, got, tc.want)
 			}
 		})
 	}
@@ -85,17 +85,17 @@ func TestWithOpenQuestion(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := withOpenQuestion(tc.reply)
+			got := WithOpenQuestion(tc.reply)
 			if got == "" {
-				t.Fatal("withOpenQuestion returned empty string")
+				t.Fatal("WithOpenQuestion returned empty string")
 			}
 			if tc.hasQuestion {
 				if !containsAny(got, openQuestions[:]) {
-					t.Errorf("withOpenQuestion(%q) = %q, expected one of known questions appended", tc.reply, got)
+					t.Errorf("WithOpenQuestion(%q) = %q, expected one of known questions appended", tc.reply, got)
 				}
 			} else {
 				if got != tc.reply {
-					t.Errorf("withOpenQuestion(%q) = %q, expected no change", tc.reply, got)
+					t.Errorf("WithOpenQuestion(%q) = %q, expected no change", tc.reply, got)
 				}
 			}
 		})

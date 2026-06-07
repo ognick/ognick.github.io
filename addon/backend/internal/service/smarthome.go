@@ -20,8 +20,8 @@ const youtubeSearchService = "media_player.play_youtube"
 const (
 	// haActionTimeout — таймаут на выполнение HA-действий.
 	haActionTimeout = 10 * time.Second
-	// llmBGTimeout — таймаут фоновой обработки (LLM + HA) независимо от Alice-дедлайна.
-	llmBGTimeout = 30 * time.Second
+	// ProcessTimeout — таймаут на полную синхронную обработку (LLM + HA).
+	ProcessTimeout = 2 * time.Minute
 )
 
 type haGateway interface {
@@ -81,38 +81,23 @@ func New(ha haGateway, llm llmGateway, policy policyGateway, memoryRepo memoryGa
 	}
 }
 
-// processResult — результат полной обработки команды (LLM + HA).
-type processResult struct {
-	result domain.CommandResult
-	err    error
-}
-
-// Process выполняет голосовую команду пользователя в рамках сессии.
-//
-// LLM + HA-действия выполняются последовательно в одной горутине с собственным
-// фоновым контекстом (llmBGTimeout). Если вся цепочка завершилась до Alice-дедлайна —
-// результат возвращается сразу. Иначе возвращается «Обрабатываю запрос, спроси чуть
-// позже», а когда горутина завершится — результат сохраняется в inbox сессии и
-// prepend-ится к ответу на следующий запрос.
+// Process выполняет голосовую команду пользователя синхронно.
+// Вызывается хендлером в горутине с собственным контекстом (processTimeout).
+// Хендлер отвечает за оркестрацию таймаутов Alice и inbox-логику.
 func (s *SmartHomeService) Process(ctx context.Context, sessionID, userID, command string) (domain.CommandResult, error) {
 	requestTime := time.Now()
 
 	s.log.Info("process command", "session", sessionID, "user", userID, "command", command)
 
-	// Забираем отложенный ответ от предыдущего запроса (если он завершился после таймаута).
-	pendingReply := s.popInbox(sessionID)
-
 	entities, err := s.policy.GetEntities(ctx)
 	if err != nil {
-		s.log.Error("policy fetch failed", "err", err)
-		return domain.CommandResult{}, err
+		return domain.CommandResult{}, fmt.Errorf("policy fetch: %w", err)
 	}
 	s.log.Info("policy entities", "count", len(entities))
 
 	devices, err := s.ha.GetDeviceInfos(ctx, entities)
 	if err != nil {
-		s.log.Error("ha device fetch failed", "err", err)
-		return domain.CommandResult{}, err
+		return domain.CommandResult{}, fmt.Errorf("ha device fetch: %w", err)
 	}
 	s.log.Info("ha devices loaded", "count", len(devices))
 
@@ -129,75 +114,14 @@ func (s *SmartHomeService) Process(ctx context.Context, sessionID, userID, comma
 	history := s.getHistory(sessionID)
 	s.log.Debug("session history", "session", sessionID, "messages", len(history))
 
-	resultCh := make(chan processResult, 1)
-	bgCtx, bgCancel := context.WithTimeout(context.Background(), llmBGTimeout)
-
-	go func() {
-		defer bgCancel()
-		resultCh <- s.runLLMAndHA(bgCtx, sessionID, userID, command, requestTime, devices, history, memFacts)
-	}()
-
-	select {
-	case r := <-resultCh:
-		if r.err != nil {
-			return domain.CommandResult{}, r.err
-		}
-		if pendingReply != "" {
-			r.result.Reply = joinReplies(pendingReply, r.result.Reply)
-		}
-		if !r.result.EndSession {
-			r.result.Reply = withOpenQuestion(r.result.Reply)
-		}
-		return r.result, nil
-
-	case <-ctx.Done():
-		// Alice-дедлайн истёк раньше чем завершилась обработка.
-		// Горутина продолжает работу; когда закончит — кладёт результат в inbox.
-		s.log.Warn("alice deadline exceeded, deferring result", "session", sessionID)
-		go func() {
-			select {
-			case r := <-resultCh:
-				if r.err != nil {
-					s.log.Error("deferred processing failed", "session", sessionID, "err", r.err)
-					return
-				}
-				s.log.Info("deferred result ready, storing in inbox", "session", sessionID)
-				s.storeInbox(sessionID, r.result.Reply)
-			case <-bgCtx.Done():
-				s.log.Warn("deferred processing timed out", "session", sessionID)
-			}
-		}()
-
-		deferredMsg := "Обрабатываю запрос, спроси чуть позже"
-		if pendingReply != "" {
-			deferredMsg = joinReplies(pendingReply, deferredMsg)
-		}
-		return domain.CommandResult{
-			Status: domain.CommandOK,
-			Reply:  deferredMsg,
-		}, nil
-	}
-}
-
-// runLLMAndHA выполняет LLM-запрос, обновляет память и выполняет HA-действия последовательно.
-// Возвращает итоговый CommandResult (с учётом ошибок HA).
-func (s *SmartHomeService) runLLMAndHA(
-	ctx context.Context,
-	sessionID, userID, command string,
-	requestTime time.Time,
-	devices []domain.Device,
-	history []domain.ChatMessage,
-	memFacts []domain.MemoryFact,
-) processResult {
 	result, err := s.llm.Execute(ctx, command, devices, history, memFacts)
 	if err != nil {
-		s.log.Error("llm execute failed", "err", err)
-		return processResult{err: err}
+		return domain.CommandResult{}, fmt.Errorf("llm execute: %w", err)
 	}
 	s.log.Info("llm response", "status", result.Status, "reply", result.Reply,
 		"actions", len(result.Actions), "remember", len(result.Remember), "forget", len(result.Forget))
 
-	// Обновляем память — влияет на следующий запрос.
+	// Обновляем память.
 	if len(result.Remember) > 0 {
 		if err := s.memoryRepo.AddFacts(ctx, userID, result.Remember); err != nil {
 			s.log.Warn("add facts failed", "user", userID, "err", err)
@@ -226,7 +150,6 @@ func (s *SmartHomeService) runLLMAndHA(
 			result.Reply += ". Часть команд не удалось выполнить — устройство не ответило"
 		}
 
-		// Результаты действий кладём в историю после основных сообщений.
 		s.appendHistory(sessionID, requestTime.Add(time.Nanosecond), []domain.ChatMessage{
 			{Role: "user", Content: formatActionResults(actionResults)},
 		})
@@ -240,7 +163,7 @@ func (s *SmartHomeService) runLLMAndHA(
 		})
 	}
 
-	return processResult{result: result}
+	return result, nil
 }
 
 // ── HA actions ────────────────────────────────────────────────────────────────
@@ -345,8 +268,8 @@ func injectYouTubeService(devices []domain.Device) []domain.Device {
 
 // ── session inbox ─────────────────────────────────────────────────────────────
 
-// popInbox возвращает отложенный ответ сессии и очищает его.
-func (s *SmartHomeService) popInbox(sessionID string) string {
+// PopInbox возвращает отложенный ответ сессии и очищает его.
+func (s *SmartHomeService) PopInbox(sessionID string) string {
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
 	reply := s.sessionInbox[sessionID]
@@ -354,8 +277,8 @@ func (s *SmartHomeService) popInbox(sessionID string) string {
 	return reply
 }
 
-// storeInbox сохраняет отложенный ответ в inbox сессии (append если уже есть).
-func (s *SmartHomeService) storeInbox(sessionID, reply string) {
+// StoreInbox сохраняет отложенный ответ в inbox сессии (append если уже есть).
+func (s *SmartHomeService) StoreInbox(sessionID, reply string) {
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
 	if existing := s.sessionInbox[sessionID]; existing != "" {
@@ -404,8 +327,8 @@ func (s *SmartHomeService) clearHistory(sessionID string) {
 
 // ── reply helpers ─────────────────────────────────────────────────────────────
 
-// joinReplies объединяет два ответа через ". ", убирая лишние точки на стыке.
-func joinReplies(a, b string) string {
+// JoinReplies объединяет два ответа через ". ", убирая лишние точки на стыке.
+func JoinReplies(a, b string) string {
 	return strings.TrimRight(a, " .") + ". " + b
 }
 
@@ -432,8 +355,8 @@ var openQuestions = []string{
 	"Помочь ещё с чем-то?",
 }
 
-// withOpenQuestion добавляет случайный открытый вопрос, если ответ не заканчивается вопросом.
-func withOpenQuestion(reply string) string {
+// WithOpenQuestion добавляет случайный открытый вопрос, если ответ не заканчивается вопросом.
+func WithOpenQuestion(reply string) string {
 	if strings.HasSuffix(strings.TrimRight(reply, " "), "?") {
 		return reply
 	}
