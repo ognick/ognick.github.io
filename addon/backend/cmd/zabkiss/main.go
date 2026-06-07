@@ -90,6 +90,7 @@ func main() {
 	alice.New(svc, alice.NewAuth(userRepo, cfg.AllowedEmails), log).Register(r)
 
 	// ── Telegram ────────────────────────────────────────────────────────────
+	var tgHandler *tghandler.Handler
 	if cfg.TelegramBotToken != "" && cfg.TelegramLLMAPIKey != "" {
 		nutritionRepo, err := sqliterepo.NewNutritionRepo()
 		if err != nil {
@@ -99,7 +100,7 @@ func main() {
 			tgClient := tgclient.NewClient(cfg.TelegramBotToken)
 			nutritionSvc := service.NewNutritionService(geminiClient, tgClient, nutritionRepo, log)
 
-			tghandler.NewHandler(nutritionSvc, tgClient, cfg.TelegramAllowedUsers, log).Register(r)
+			tgHandler = tghandler.NewHandler(nutritionSvc, tgClient, cfg.TelegramAllowedUsers, log)
 
 			apiToken := cfg.TelegramAPIToken
 			if apiToken == "" {
@@ -158,6 +159,9 @@ func main() {
 	lc := goscade.NewLifecycle(log, goscade.WithShutdownHook())
 	goscade.Register(lc, db)
 	goscade.Register(lc, policyClient)
+	if tgHandler != nil {
+		goscade.Register(lc, tgHandler)
+	}
 	goscade.Register(lc, httpserver.New(cfg.Addr, r), db, policyClient)
 
 	if err := goscade.Run(context.Background(), lc, func() {

@@ -13,6 +13,35 @@ import (
 type Client interface {
 	DownloadFile(ctx context.Context, fileID string) ([]byte, error)
 	SendMessage(ctx context.Context, chatID int, text string) error
+	GetUpdates(ctx context.Context, offset int) ([]Update, error)
+}
+
+type Update struct {
+	UpdateID int      `json:"update_id"`
+	Message  *Message `json:"message"`
+}
+
+type Message struct {
+	MessageID int        `json:"message_id"`
+	From      User       `json:"from"`
+	Chat      Chat       `json:"chat"`
+	Photo     []PhotoSize `json:"photo"`
+	Caption   string     `json:"caption"`
+	Text      string     `json:"text"`
+}
+
+type User struct {
+	ID int64 `json:"id"`
+}
+
+type Chat struct {
+	ID int64 `json:"id"`
+}
+
+type PhotoSize struct {
+	FileID string `json:"file_id"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
 }
 
 type telegramClient struct {
@@ -113,4 +142,34 @@ func (c *telegramClient) SendMessage(ctx context.Context, chatID int, text strin
 		return fmt.Errorf("sendMessage returned %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func (c *telegramClient) GetUpdates(ctx context.Context, offset int) ([]Update, error) {
+	url := fmt.Sprintf("%s/getUpdates?timeout=30&offset=%d", c.baseURL(), offset)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build getUpdates request: %w", err)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("getUpdates: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("getUpdates returned %d", resp.StatusCode)
+	}
+
+	var result struct {
+		OK     bool     `json:"ok"`
+		Result []Update `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode getUpdates: %w", err)
+	}
+	if !result.OK {
+		return nil, fmt.Errorf("getUpdates: telegram api returned ok=false")
+	}
+	return result.Result, nil
 }
