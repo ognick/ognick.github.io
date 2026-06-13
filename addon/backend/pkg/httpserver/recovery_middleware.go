@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/ognick/zabkiss/pkg/logger"
@@ -12,7 +13,11 @@ func RecoveryMiddleware(log logger.Logger) func(http.Handler) http.Handler {
 			defer func() {
 				if rec := recover(); rec != nil {
 					log.Error("panic recovered", "err", rec)
-					http.Error(w, "internal server error", http.StatusInternalServerError)
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusInternalServerError)
+					_ = json.NewEncoder(w).Encode(map[string]string{
+						"error": "internal server error",
+					})
 				}
 			}()
 			next.ServeHTTP(w, r)

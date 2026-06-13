@@ -165,9 +165,13 @@ func newServer(t *testing.T, cfg serverConfig) *testServer {
 }
 
 // newServerWithCustomService is used when tests need non-standard service behaviour
-// (e.g., panic injection). Accepts any value implementing the commandService interface.
+// (e.g., panic injection). Accepts any value implementing the full commandService
+// interface (Process + PopInbox + StoreInbox), since Alice's webhook relies on all
+// three for the deferred-inbox pattern.
 func newServerWithCustomService(t *testing.T, svc interface {
 	Process(context.Context, string, string, string) (domain.CommandResult, error)
+	PopInbox(string) string
+	StoreInbox(string, string)
 }, cfg serverConfig) *testServer {
 	t.Helper()
 

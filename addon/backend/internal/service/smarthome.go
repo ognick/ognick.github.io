@@ -142,7 +142,8 @@ func (s *SmartHomeService) Process(ctx context.Context, sessionID, userID, comma
 		actionCtx, cancel := context.WithTimeout(ctx, haActionTimeout)
 		defer cancel()
 
-		actionResults := s.executeActions(actionCtx, result.Actions)
+		allowedActions := buildAllowedActionSet(devices, s.youtube != nil)
+		actionResults := s.executeActions(actionCtx, result.Actions, allowedActions)
 
 		if allFailed(actionResults) {
 			result.Reply = "Не удалось выполнить команду — устройство не ответило или недоступно"
@@ -174,9 +175,19 @@ type actionResult struct {
 	Err      error
 }
 
-func (s *SmartHomeService) executeActions(ctx context.Context, actions []domain.Action) []actionResult {
+func (s *SmartHomeService) executeActions(ctx context.Context, actions []domain.Action, allowed map[string]map[string]struct{}) []actionResult {
 	results := make([]actionResult, len(actions))
 	for i, action := range actions {
+		// Серверная валидация против policy+discovered services. LLM — мягкая
+		// граница; это — жёсткая. Без этой проверки модель через prompt injection
+		// может дёргать любой entity_id и любой сервис в HA.
+		if err := validateAction(action, allowed); err != nil {
+			s.log.Warn("action rejected by policy",
+				"target", action.TargetID, "service", action.Service, "err", err)
+			results[i] = actionResult{TargetID: action.TargetID, Service: action.Service, Err: err}
+			continue
+		}
+
 		var err error
 		if action.Service == youtubeSearchService && s.youtube != nil {
 			err = s.executeYouTubeAction(ctx, action)
@@ -189,6 +200,42 @@ func (s *SmartHomeService) executeActions(ctx context.Context, actions []domain.
 		}
 	}
 	return results
+}
+
+// buildAllowedActionSet строит карту entity_id → set(allowed service names)
+// из списка устройств, отфильтрованных по policy. Дополнительно включает
+// виртуальный сервис play_youtube для media_player, если YouTube включён.
+func buildAllowedActionSet(devices []domain.Device, youtubeEnabled bool) map[string]map[string]struct{} {
+	out := make(map[string]map[string]struct{}, len(devices))
+	for _, d := range devices {
+		svcs := make(map[string]struct{}, len(d.Services)+1)
+		for _, svc := range d.Services {
+			svcs[svc.Service] = struct{}{}
+		}
+		if youtubeEnabled && strings.HasPrefix(d.EntityID, "media_player.") {
+			svcs[youtubeSearchService] = struct{}{}
+		}
+		out[d.EntityID] = svcs
+	}
+	return out
+}
+
+// validateAction проверяет, что action разрешён для данной сущности.
+func validateAction(action domain.Action, allowed map[string]map[string]struct{}) error {
+	if action.TargetID == "" {
+		return fmt.Errorf("empty target_id")
+	}
+	if action.Service == "" {
+		return fmt.Errorf("empty service")
+	}
+	svcs, ok := allowed[action.TargetID]
+	if !ok {
+		return fmt.Errorf("target %q not in policy", action.TargetID)
+	}
+	if _, ok := svcs[action.Service]; !ok {
+		return fmt.Errorf("service %q not allowed for %q", action.Service, action.TargetID)
+	}
+	return nil
 }
 
 // executeYouTubeAction ищет видео по запросу и запускает его через media_player.play_media.

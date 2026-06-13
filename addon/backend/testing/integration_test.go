@@ -363,7 +363,7 @@ func newIntegrationServer(t *testing.T, haURL, haToken string, allowedEmails []s
 	// Real HA + policy clients; stub LLM so we don't call OpenAI in tests.
 	haClient := ha.NewClient(haURL, haToken)
 	policyClient := policy.NewClient(haURL, haToken, 30*time.Second, log)
-	svc := service.New(haClient, &integrationLLMStub{reply: "включаю свет"}, policyClient, memRepo, log)
+	svc := service.New(haClient, &integrationLLMStub{reply: "включаю свет"}, policyClient, memRepo, nil, log)
 
 	auth := alice.NewAuth(userRepo, allowedEmails).WithHTTPClient(yandex.client())
 

@@ -21,11 +21,22 @@ var (
 	errReadBody  = errors.New("не удалось прочитать запрос")
 	errParseBody = errors.New("не удалось разобрать запрос")
 	errAuth      = errors.New("пожалуйста авторизуйтесь для продолжения")
+	errInternal  = errors.New("internal error")
 )
 
 // maxResponseTime — резерв времени на отправку ответа Алисе
 // (JSON-кодирование + сетевая задержка).
 const maxResponseTime = 300 * time.Millisecond
+
+// maxBodyBytes — предел размера тела запроса от Алисы. Реальные webhook'ы
+// Алисы не превышают пары килобайт; 64 KB — щедрый потолок, защищающий от
+// DoS через огромные JSON-тела.
+const maxBodyBytes int64 = 64 * 1024
+
+// maxCommandBytes — предел длины пользовательской команды, передаваемой в LLM.
+// Голосовые команды Алисы обычно <1 KB; 4 KB — щедрый потолок, защищающий
+// от cost-amplification атак через огромные тексты.
+const maxCommandBytes = 4 * 1024
 
 type commandService interface {
 	Process(ctx context.Context, sessionID, userID, command string) (domain.CommandResult, error)
@@ -54,6 +65,7 @@ func (h *Handler) Register(r chi.Router) {
 }
 
 func (h *Handler) webhook(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		h.writeError(w, errReadBody)
@@ -64,6 +76,12 @@ func (h *Handler) webhook(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(body, &req); err != nil {
 		h.writeError(w, errParseBody)
 		return
+	}
+
+	// Truncate oversized commands to prevent LLM cost amplification.
+	if len(req.Request.Command) > maxCommandBytes {
+		h.log.Warn("command truncated", "session", req.Session.SessionID, "size", len(req.Request.Command))
+		req.Request.Command = req.Request.Command[:maxCommandBytes]
 	}
 
 	if req.Request.OriginalUtterance == "ping" {
@@ -109,6 +127,15 @@ func (h *Handler) webhook(w http.ResponseWriter, r *http.Request) {
 	resultCh := make(chan domain.CommandResult, 1)
 	errCh := make(chan error, 1)
 	go func() {
+		// Recover внутри горутины: defer/recover в middleware ловить
+		// только панику текущего стека, а не панику в спавн-горутине.
+		defer func() {
+			if rec := recover(); rec != nil {
+				h.log.Error("panic in process goroutine", "err", rec, "session", req.Session.SessionID)
+				errCh <- errInternal
+			}
+		}()
+
 		ctx, cancel := context.WithTimeout(context.Background(), service.ProcessTimeout)
 		defer cancel()
 		result, err := h.svc.Process(ctx, req.Session.SessionID, user.ID, req.Request.Command)
@@ -141,11 +168,20 @@ func (h *Handler) webhook(w http.ResponseWriter, r *http.Request) {
 
 	case err := <-errCh:
 		h.log.Error("process command", "err", err)
+		if errors.Is(err, errInternal) {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
 		h.writeError(w, fmt.Errorf("%s, произошла ошибка при обработке команды", user.Name))
 
 	case <-timeoutCh:
 		h.log.Warn("alice deadline exceeded, deferring result", "session", req.Session.SessionID)
 		go func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					h.log.Error("panic in deferred goroutine", "err", rec, "session", req.Session.SessionID)
+				}
+			}()
 			select {
 			case result := <-resultCh:
 				h.log.Info("deferred result ready, storing in inbox", "session", req.Session.SessionID)

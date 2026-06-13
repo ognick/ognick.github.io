@@ -3,6 +3,7 @@ package httpserver
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -47,6 +48,12 @@ func TestRecoveryMiddleware_Panic(t *testing.T) {
 
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("status: got %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+	if got := w.Header().Get("Content-Type"); got != "application/json" {
+		t.Errorf("Content-Type: got %q, want application/json", got)
+	}
+	if !strings.Contains(w.Body.String(), "internal server error") {
+		t.Errorf("body should contain error message, got: %s", w.Body.String())
 	}
 	if len(log.errors) == 0 {
 		t.Error("expected panic to be logged")

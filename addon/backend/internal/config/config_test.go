@@ -4,6 +4,34 @@ import (
 	"testing"
 )
 
+func TestRequireHTTPURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		wantErr bool
+	}{
+		{name: "valid https", raw: "https://api.example.com/v1", wantErr: false},
+		{name: "valid http", raw: "http://localhost:8123", wantErr: false},
+		{name: "empty", raw: "", wantErr: true},
+		{name: "no scheme", raw: "example.com", wantErr: true},
+		{name: "ftp scheme rejected", raw: "ftp://example.com", wantErr: true},
+		{name: "javascript scheme rejected", raw: "javascript:alert(1)", wantErr: true},
+		{name: "no host", raw: "https://", wantErr: true},
+		{name: "gopher rejected", raw: "gopher://attacker.example/", wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := requireHTTPURL("TEST", tc.raw)
+			if tc.wantErr && err == nil {
+				t.Errorf("expected error for %q, got nil", tc.raw)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("unexpected error for %q: %v", tc.raw, err)
+			}
+		})
+	}
+}
+
 func TestGetEnv(t *testing.T) {
 	tests := []struct {
 		name     string

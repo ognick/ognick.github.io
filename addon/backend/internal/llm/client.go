@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 
 	"github.com/ognick/zabkiss/internal/domain"
 	"github.com/ognick/zabkiss/pkg/logger"
@@ -92,8 +91,8 @@ func (c *llmClient) Execute(ctx context.Context, command string, devices []domai
 		"command", command,
 		"devices", len(devices),
 		"history_len", len(history),
+		"system_prompt", systemPrompt,
 	)
-	fmt.Fprintf(os.Stderr, "\n=== LLM PROMPT ===\n%s\n==================\n", systemPrompt)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(data))
 	if err != nil {
@@ -122,7 +121,7 @@ func (c *llmClient) Execute(ctx context.Context, command string, devices []domai
 	}
 
 	rawContent := chatResp.Choices[0].Message.Content
-	fmt.Fprintf(os.Stderr, "\n=== LLM RESPONSE ===\n%s\n====================\n", rawContent)
+	c.log.Debug("llm raw response", "raw", rawContent)
 
 	var raw llmResponse
 	if err := json.Unmarshal([]byte(rawContent), &raw); err != nil {
