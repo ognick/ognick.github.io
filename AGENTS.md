@@ -2,7 +2,6 @@
 
 ZabKiss — LLM-powered natural language smart home control for Home Assistant via Yandex Alice.
 Two components: HA Custom Integration (Python) and HA Custom Add-on (Go).
-Also: Telegram nutrition bot for food photo analysis (calories/BJU) via Gemini Vision.
 
 ## Commands
 
@@ -55,9 +54,6 @@ No explicit `policy.Validate()` step — security boundary is the LLM system pro
 | `YOUTUBE_API_KEY` | `youtube_api_key` | Optional; enables YouTube search via `media_player.play_youtube` |
 | `LOG_LEVEL` | `log_level` | `debug\|info\|warn\|error` |
 | `DB_PATH` | — | Default: `/data/zabkiss.db` (SQLite) |
-| `TELEGRAM_BOT_TOKEN` | `telegram_bot_token` | Optional; enables Telegram nutrition bot |
-| `TELEGRAM_LLM_MODEL` | `telegram_llm_model` | Default: `kimi-k2.6`; dropdown for food analysis |
-| `TELEGRAM_API_TOKEN` | `telegram_api_token` | Optional; Bearer token for nutrition stats API. Auto-generated UUID if empty when telegram enabled. |
 
 ## Integration (Python)
 
@@ -68,14 +64,11 @@ The frontend panel is `zabkiss-panel-v2.js` served from `custom_components/zabki
 ## Repository pattern
 
 - `pkg/` — domain-independent wrappers/libraries only. No business logic, no prompts, no domain types.
-- `internal/domain/` — `Device`, `CommandResult`, `Action`, `ChatMessage`, `MemoryFact`, `User`, `FoodLog`, `DailyStats`, `FoodAnalysis`
-- `internal/service/` — `SmartHomeService` orchestrates HA+LLM+memory; `NutritionService` handles food photo analysis via Telegram+LLM. Both use gate interfaces for DI.
+- `internal/domain/` — `Device`, `CommandResult`, `Action`, `ChatMessage`, `MemoryFact`, `User`
+- `internal/service/` — `SmartHomeService` orchestrates HA+LLM+memory. Uses gate interfaces for DI.
 - `internal/repository/repository.go` — `UserRepo`, `MemoryRepo` interfaces
 - `internal/repository/memory/` — in-memory user token cache
-- `internal/repository/sqlite/` — SQLite-backed memory facts + `nutrition_repo.go` (separate `/data/nutrition.db`)
-- `internal/http/telegram/` — Telegram webhook handler (`POST /telegram/webhook`)
-- `pkg/visionllm/` — generic vision LLM client (no domain logic, no prompts)
-- `pkg/telegram/` — Telegram Bot API client (downloadFile, sendMessage)
+- `internal/repository/sqlite/` — SQLite-backed memory facts
 - `pkg/sqlitedb/` — SQLite connection helper (no ORM, uses `modernc.org/sqlite`)
 - All domain knowledge (prompts, parsing, business logic) lives in `internal/`
 - Lifecycle via `ognick/goscade`: components register with `goscade.Register(lc, ...)` for ordered startup/shutdown

@@ -20,9 +20,6 @@ type Config struct {
 	HAURL                 string
 	PolicyCacheTTLSeconds int
 	YouTubeAPIKey         string
-	TelegramBotToken      string
-	TelegramLLMModel      string
-	TelegramAllowedUsers  []string
 }
 
 func Load() *Config {
@@ -39,9 +36,6 @@ func Load() *Config {
 		HAURL:                 getEnv("HA_URL", "http://homeassistant:8123"),
 		PolicyCacheTTLSeconds: parseInt(getEnv("POLICY_CACHE_TTL_SECONDS", "10")),
 		YouTubeAPIKey:         getEnv("YOUTUBE_API_KEY", ""),
-		TelegramBotToken:      getEnv("TELEGRAM_BOT_TOKEN", ""),
-		TelegramLLMModel:      getEnv("TELEGRAM_LLM_MODEL", "kimi-k2.6"),
-		TelegramAllowedUsers:  parseList(getEnv("TELEGRAM_ALLOWED_USER_IDS", "")),
 	}
 }
 

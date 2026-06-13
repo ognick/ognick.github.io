@@ -15,8 +15,6 @@ import (
 	"github.com/ognick/zabkiss/internal/config"
 	"github.com/ognick/zabkiss/internal/ha"
 	"github.com/ognick/zabkiss/internal/http/alice"
-	nutritionhttp "github.com/ognick/zabkiss/internal/http/nutrition"
-	tghandler "github.com/ognick/zabkiss/internal/http/telegram"
 	"github.com/ognick/zabkiss/internal/llm"
 	"github.com/ognick/zabkiss/internal/policy"
 	memoryrepo "github.com/ognick/zabkiss/internal/repository/memory"
@@ -25,8 +23,6 @@ import (
 	"github.com/ognick/zabkiss/pkg/httpserver"
 	"github.com/ognick/zabkiss/pkg/logger"
 	"github.com/ognick/zabkiss/pkg/sqlitedb"
-	tgclient "github.com/ognick/zabkiss/pkg/telegram"
-	"github.com/ognick/zabkiss/pkg/visionllm"
 	"github.com/ognick/zabkiss/pkg/youtube"
 )
 
@@ -87,48 +83,6 @@ func main() {
 
 	alice.New(svc, alice.NewAuth(userRepo, cfg.AllowedEmails), log).Register(r)
 
-	// ── Telegram ────────────────────────────────────────────────────────────
-	var tgHandler *tghandler.Handler
-	if cfg.TelegramBotToken != "" && cfg.OpenCodeAPIKey != "" {
-		nutritionRepo, err := sqliterepo.NewNutritionRepo()
-		if err != nil {
-			log.Error("nutrition repo", "err", err)
-		} else {
-			visionClient := visionllm.NewClient(cfg.OpenCodeBaseURL, cfg.OpenCodeAPIKey, cfg.TelegramLLMModel)
-			tgClient := tgclient.NewClient(cfg.TelegramBotToken)
-			nutritionSvc := service.NewNutritionService(visionClient, tgClient, nutritionRepo, log)
-
-			tgHandler = tghandler.NewHandler(nutritionSvc, tgClient, cfg.TelegramAllowedUsers, log)
-
-			nutritionHandler := nutritionhttp.NewIngressHandler(nutritionRepo, visionClient, log)
-
-			r.Route("/nutrition", func(r chi.Router) {
-				r.Use(ingressAuth)
-				r.Use(securityHeaders)
-
-				r.Get("/ui", func(w http.ResponseWriter, req *http.Request) {
-					w.Header().Set("Content-Type", "text/html; charset=utf-8")
-					data, _ := nutritionhttp.UIHTML.ReadFile("ui.html")
-					w.Write(data)
-				})
-				r.Route("/api", func(r chi.Router) {
-					r.Get("/users", nutritionHandler.ListUsers)
-					r.Get("/entries", nutritionHandler.GetEntries)
-					r.Put("/entries/{id}", nutritionHandler.UpdateEntry)
-					r.Delete("/entries/{id}", nutritionHandler.DeleteEntry)
-					r.Get("/targets", nutritionHandler.GetTargets)
-					r.Put("/targets", nutritionHandler.SaveTargets)
-					r.Post("/targets/{user_id}/regenerate-token", nutritionHandler.RegenerateToken)
-				})
-			})
-
-			r.With(nutritionHandler.DailyRateLimit).Get("/api/zabkiss/nutrition/daily", nutritionHandler.ExternalDaily)
-			r.With(nutritionHandler.WeeklyRateLimit).Get("/api/zabkiss/nutrition/weekly", nutritionHandler.ExternalWeekly)
-
-			log.Info("telegram nutrition bot enabled")
-		}
-	}
-
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "ok")
@@ -145,9 +99,6 @@ func main() {
 	lc := goscade.NewLifecycle(log, goscade.WithShutdownHook())
 	goscade.Register(lc, db)
 	goscade.Register(lc, policyClient)
-	if tgHandler != nil {
-		goscade.Register(lc, tgHandler)
-	}
 	goscade.Register(lc, httpserver.New(cfg.Addr, r), db, policyClient)
 
 	if err := goscade.Run(context.Background(), lc, func() {
@@ -183,11 +134,3 @@ func ingressAuth(next http.Handler) http.Handler {
 	})
 }
 
-func securityHeaders(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline' 'self'")
-		next.ServeHTTP(w, r)
-	})
-}
