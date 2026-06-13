@@ -15,12 +15,14 @@ import (
 	"github.com/ognick/zabkiss/internal/config"
 	"github.com/ognick/zabkiss/internal/ha"
 	"github.com/ognick/zabkiss/internal/http/alice"
+	modelshttp "github.com/ognick/zabkiss/internal/http/models"
 	"github.com/ognick/zabkiss/internal/llm"
 	"github.com/ognick/zabkiss/internal/policy"
 	memoryrepo "github.com/ognick/zabkiss/internal/repository/memory"
 	sqliterepo "github.com/ognick/zabkiss/internal/repository/sqlite"
 	"github.com/ognick/zabkiss/internal/service"
 	"github.com/ognick/zabkiss/pkg/httpserver"
+	"github.com/ognick/zabkiss/pkg/llmmodels"
 	"github.com/ognick/zabkiss/pkg/logger"
 	"github.com/ognick/zabkiss/pkg/sqlitedb"
 	"github.com/ognick/zabkiss/pkg/youtube"
@@ -83,6 +85,10 @@ func main() {
 
 	alice.New(svc, alice.NewAuth(userRepo, cfg.AllowedEmails), log).Register(r)
 
+	modelsClient := llmmodels.NewClient(cfg.OpenCodeBaseURL, cfg.OpenCodeAPIKey, log)
+	modelsHandler := modelshttp.New(modelsClient, log)
+	r.With(ingressAuth).Get("/api/zabkiss/models", modelsHandler.List)
+
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "ok")
@@ -119,6 +125,9 @@ func localHost() string {
 	return name + ".local"
 }
 
+// ingressAuth ограничивает доступ к admin-эндпоинтам в режиме HA Supervisor.
+// HA-фронтенд шлёт X-HA-Access с токеном SUPERVISOR_TOKEN; вне Supervisor'а
+// (например, локальный dev) middleware пропускает все запросы.
 func ingressAuth(next http.Handler) http.Handler {
 	supervisorToken := os.Getenv("SUPERVISOR_TOKEN")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

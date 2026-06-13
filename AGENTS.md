@@ -46,7 +46,7 @@ No explicit `policy.Validate()` step — security boundary is the LLM system pro
 |---------|-----------|-------|
 | `OPENCODE_API_KEY` | `opencode_api_key` | Required |
 | `OPENCODE_BASE_URL` | `opencode_base_url` | Default: `https://opencode.ai/zen/go/v1` |
-| `OPENCODE_MODEL` | `opencode_model` | Default: `deepseek-v4-flash`; dropdown for Alice smart home |
+| `OPENCODE_MODEL` | `opencode_model` | Default: `deepseek-v4-flash`; free-text model ID. Live list with speed/intelligence ratings at `GET /api/zabkiss/models` |
 | `HA_TOKEN` | `ha_token` | Required. Long-lived HA token |
 | `HA_URL` | `ha_url` | Default: `http://homeassistant:8123` |
 | `ALLOWED_EMAILS` | `allowed_emails` | Comma-separated; users outside this list get `errForbidden` |
